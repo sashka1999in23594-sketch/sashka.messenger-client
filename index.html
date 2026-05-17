@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sashka Messenger</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/peerjs@0.6.1/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #141414;
+            --surface2: #1e1e1e;
+            --surface3: #282828;
+            --text: #e8e8e8;
+            --text2: #999;
+            --accent: #5b9bd5;
+            --accent2: #4a8ac4;
+            --green: #4caf84;
+            --red: #e0555a;
+            --orange: #e8a84c;
+            --purple: #9b59b6;
+            --border: #2a2a2a;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+            --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        .light {
+            --bg: #f5f5f5;
+            --surface: #fff;
+            --surface2: #f0f0f0;
+            --surface3: #e5e5e5;
+            --text: #1a1a1a;
+            --text2: #666;
+            --border: #ddd;
+            --shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font);
+            background: #000;
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        .app {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            background: var(--surface);
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 300px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .sidebar-header h2 { font-size: 1rem; margin-bottom: 8px; }
+        .search-box {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            outline: none;
+        }
+        .chat-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .chat-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .chat-item:hover { background: var(--surface2); }
+        .chat-item.active { background: var(--accent); color: #fff; }
+        .chat-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--surface3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg);
+        }
+        .main-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .msg {
+            max-width: 70%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            word-break: break-word;
+        }
+        .msg.sent { align-self: flex-end; background: var(--accent); color: #fff; }
+        .msg.received { align-self: flex-start; background: var(--surface2); }
+        .msg.system {
+            align-self: center;
+            background: var(--surface3);
+            color: var(--text2);
+            font-size: 0.75rem;
+            padding: 6px 12px;
+            border-radius: 12px;
+        }
+        .input-area {
+            padding: 10px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            outline: none;
+        }
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+        .btn.ghost { background: var(--surface2); color: var(--text); }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal {
+            background: var(--surface);
+            padding: 20px;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            margin-bottom: 10px;
+            outline: none;
+        }
+        .hidden { display: none !important; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            z-index: 200;
+        }
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; left: -100%; z-index: 10; width: 100%; transition: 0.3s; }
+            .sidebar.open { left: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>💬 Sashka Messenger</h2>
+                <input type="text" class="search-box" placeholder="🔍 Поиск..." id="searchInput">
+            </div>
+            <div class="chat-list" id="chatList"></div>
+            <div style="padding:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
+                <button class="btn ghost" id="btnNewChat">➕</button>
+                <button class="btn ghost" id="btnProfile">👤</button>
+                <button class="btn ghost" id="btnTheme">🌓</button>
+            </div>
+        </div>
+        <div class="main">
+            <div class="main-header">
+                <button class="btn ghost" id="btnBack" style="display:none;">←</button>
+                <strong id="mainName">Выберите чат</strong>
+            </div>
+            <div class="messages" id="messages"></div>
+            <div class="input-area" id="inputArea" style="display:none;">
+                <input type="text" id="msgInput" placeholder="Сообщение...">
+                <button class="btn" id="btnSend">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="loginModal">
+        <div class="modal">
+            <h3 style="margin-bottom:12px;">🔐 Вход в Sashka Messenger</h3>
+            <input type="text" id="loginName" placeholder="Логин">
+            <input type="password" id="loginPass" placeholder="Пароль">
+            <button class="btn" id="btnLogin" style="width:100%;">Войти</button>
+            <p style="font-size:0.75rem;color:var(--text2);margin-top:8px;">Нет аккаунта? Просто введите новый логин и пароль</p>
+        </div>
+    </div>
+
+    <div class="modal-overlay hidden" id="createChatModal">
+        <div class="modal">
+            <h3>➕ Новый чат</h3>
+            <input type="text" id="targetUserName" placeholder="Имя пользователя">
+            <button class="btn" id="btnCreatePrivate" style="width:100%;">Создать личный чат</button>
+            <button class="btn ghost" id="btnCloseCreate" style="width:100%;margin-top:6px;">Отмена</button>
+        </div>
+    </div>
+
+    <div class="toast hidden" id="toast"></div>
+
+    <script>
+        // ⚠️ СЮДА ВСТАВЬ СВОЙ URL СЕРВЕРА
+        const SERVER_URL = 'https://sashka-messenger-server.onrender.com';
+        
+        const socket = io(SERVER_URL);
+        const $ = (s) => document.querySelector(s);
+        const $$ = (s) => document.querySelectorAll(s);
+
+        let currentUser = null;
+        let currentChatId = null;
+        let chats = [];
+        let messagesCache = {};
+
+        // ---------- Авторизация ----------
+        $('#loginModal').classList.remove('hidden');
+        
+        $('#btnLogin').addEventListener('click', () => {
+            const name = $('#loginName').value.trim();
+            const pass = $('#loginPass').value;
+            if (!name || !pass) return showToast('Введите логин и пароль');
+            
+            socket.emit('login', { name, password: pass }, (res) => {
+                if (res.error) return showToast(res.error);
+                currentUser = res.user;
+                $('#loginModal').classList.add('hidden');
+                loadChats();
+                showToast('Добро пожаловать, ' + name + '!');
+            });
+        });
+
+        // ---------- Загрузка чатов ----------
+        function loadChats() {
+            socket.emit('get_chats', (serverChats) => {
+                chats = serverChats;
+                renderChatList();
+                if (currentChatId) joinChat(currentChatId);
+            });
+        }
+
+        function renderChatList() {
+            const list = $('#chatList');
+            list.innerHTML = chats.map(c => {
+                const active = c.id === currentChatId ? ' active' : '';
+                const name = c.name || (c.type === 'private' ? 'Личный чат' : 'Без названия');
+                return `<div class="chat-item${active}" data-chat-id="${c.id}">
+                    <div class="chat-avatar">${c.type === 'system' ? '📋' : c.type === 'suggest' ? '💡' : '💬'}</div>
+                    <div><div style="font-weight:600;">${name}</div></div>
+                </div>`;
+            }).join('');
+            
+            list.querySelectorAll('.chat-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const id = el.dataset.chatId;
+                    if (id !== currentChatId) joinChat(id);
+                });
+            });
+        }
+
+        // ---------- Присоединение к чату ----------
+        function joinChat(chatId) {
+            currentChatId = chatId;
+            socket.emit('join_chat', chatId);
+            socket.emit('get_messages', chatId, (msgs) => {
+                messagesCache[chatId] = msgs || [];
+                renderMessages();
+                renderChatList();
+                $('#inputArea').style.display = 'flex';
+                const chat = chats.find(c => c.id === chatId);
+                if (chat) $('#mainName').textContent = chat.name || 'Чат';
+                if (window.innerWidth <= 768) $('#sidebar').classList.remove('open');
+            });
+        }
+
+        // ---------- Отправка сообщений ----------
+        function sendMessage(text) {
+            if (!currentChatId || !text.trim()) return;
+            socket.emit('send_message', { chatId: currentChatId, text }, (res) => {
+                if (res.error) showToast(res.error);
+            });
+            $('#msgInput').value = '';
+        }
+
+        $('#btnSend').addEventListener('click', () => sendMessage($('#msgInput').value));
+        $('#msgInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage($('#msgInput').value);
+        });
+
+        // ---------- Получение сообщений ----------
+        socket.on('new_message', ({ chatId, msg }) => {
+            if (!messagesCache[chatId]) messagesCache[chatId] = [];
+            if (!messagesCache[chatId].find(m => m.id === msg.id)) {
+                messagesCache[chatId].push(msg);
+                if (chatId === currentChatId) renderMessages();
+                renderChatList();
+            }
+        });
+
+        function renderMessages() {
+            const area = $('#messages');
+            if (!currentChatId) { area.innerHTML = '<p style="text-align:center;color:var(--text2);">Выберите чат</p>'; return; }
+            const msgs = messagesCache[currentChatId] || [];
+            area.innerHTML = msgs.map(m => {
+                const cls = m.fromId === currentUser?.id ? 'sent' : (m.system ? 'system' : 'received');
+                return `<div class="msg ${cls}">
+                    <div style="font-size:0.7rem;font-weight:700;">${m.from}</div>
+                    <div>${m.text}</div>
+                    <div style="font-size:0.6rem;opacity:0.6;text-align:right;">${new Date(m.time).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>`;
+            }).join('');
+            area.scrollTop = area.scrollHeight;
+        }
+
+        // ---------- Создание личного чата ----------
+        $('#btnNewChat').addEventListener('click', () => $('#createChatModal').classList.remove('hidden'));
+        $('#btnCloseCreate').addEventListener('click', () => $('#createChatModal').classList.add('hidden'));
+        $('#btnCreatePrivate').addEventListener('click', () => {
+            const targetName = $('#targetUserName').value.trim();
+            if (!targetName) return showToast('Введите имя пользователя');
+            socket.emit('create_chat', { type: 'private', targetName }, (res) => {
+                if (res.error) return showToast(res.error);
+                $('#createChatModal').classList.add('hidden');
+                loadChats();
+                showToast('Чат создан!');
+            });
+        });
+
+        // ---------- Вспомогательные функции ----------
+        function showToast(msg) {
+            const toast = $('#toast');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        $('#btnBack').addEventListener('click', () => {
+            if (window.innerWidth <= 768) $('#sidebar').classList.toggle('open');
+        });
+
+        $('#btnTheme').addEventListener('click', () => {
+            document.body.classList.toggle('light');
+        });
+
+        // Мобильная адаптация
+        if (window.innerWidth <= 768) {
+            $('#btnBack').style.display = 'block';
+            $('#btnBack').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+        }
+    </script>
+</body>
+</html>
